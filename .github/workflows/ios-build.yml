@@ -1,0 +1,63 @@
+
+name: Build CarLyrics IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Configure CarLyrics
+        run: |
+          cat > Config.xcconfig <<'EOF'
+          CARLYRICS_TEAM_ID =
+          CARLYRICS_BUNDLE_ID = it.michele.carlyrics
+          CARLYRICS_SPOTIFY_CLIENT_ID = add5999b2fe14c7e8e980e26f75c6f53
+          EOF
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Resolve packages
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -project CarLyrics.xcodeproj \
+            -scheme CarLyrics
+
+      - name: Build unsigned app
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project CarLyrics.xcodeproj \
+            -scheme CarLyrics \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: Package IPA
+        run: |
+          mkdir Payload
+          cp -R build/Build/Products/Release-iphoneos/CarLyrics.app Payload/
+          zip -r CarLyrics.ipa Payload
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: CarLyrics-IPA
+          path: CarLyrics.ipa
+          retention-days: 7
